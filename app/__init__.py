@@ -174,7 +174,7 @@ def create_app(test_config=None):
     def set_security_headers(response):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["X-DNS-Prefetch-Control"] = "off"
         from flask_login import current_user
 
@@ -265,6 +265,7 @@ def _ensure_sqlite_user_auth_columns():
     if not uri.startswith("sqlite"):
         return
     from sqlalchemy import inspect, text
+    from sqlalchemy.exc import IntegrityError
 
     inspector = inspect(db.engine)
     if "users" not in inspector.get_table_names():
@@ -281,6 +282,21 @@ def _ensure_sqlite_user_auth_columns():
     )
     if "department" not in cols:
         db.session.execute(text("ALTER TABLE users ADD COLUMN department VARCHAR(32)"))
+    unique_index_ready = True
+    try:
+        with db.session.begin_nested():
+            db.session.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email_ci_unique "
+                    "ON users (lower(trim(email)))"
+                )
+            )
+    except IntegrityError:
+        unique_index_ready = False
+    if not unique_index_ready:
+        db.session.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_users_email_ci_lookup ON users (lower(trim(email)))")
+        )
     issue_cols = {c["name"] for c in inspector.get_columns("issues")} if "issues" in inspector.get_table_names() else set()
     if issue_cols and "possible_duplicate" not in issue_cols:
         db.session.execute(

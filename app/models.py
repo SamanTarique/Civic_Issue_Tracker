@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from flask import current_app
 from flask_login import UserMixin
+from sqlalchemy.orm import validates
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app import db
@@ -25,6 +26,14 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     issues = db.relationship("Issue", back_populates="reporter", foreign_keys="Issue.reporter_id")
+
+    @staticmethod
+    def normalize_email(email):
+        return (email or "").strip().casefold()
+
+    @validates("email")
+    def _normalize_email(self, _key, email):
+        return self.normalize_email(email)
 
     def set_password(self, password):
         method = "pbkdf2:sha256:260000"
@@ -173,7 +182,7 @@ def record_status(issue, actor, to_status, note=None, initial=False):
 
 
 def ensure_staff_user():
-    email = (current_app.config.get("STAFF_EMAIL") or "").strip().lower()
+    email = User.normalize_email(current_app.config.get("STAFF_EMAIL"))
     password = current_app.config.get("STAFF_PASSWORD")
     if not email or not password:
         return

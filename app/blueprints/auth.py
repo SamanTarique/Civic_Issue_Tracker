@@ -13,6 +13,7 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required, login_user, logout_user
+from sqlalchemy import func
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app import db, limiter
@@ -54,6 +55,29 @@ def _rotate_session():
     session["csrf_token"] = secrets.token_hex(16)
 
 
+def _normalize_email(email):
+    return User.normalize_email(email)
+
+
+def _users_by_email(email):
+    normalized = _normalize_email(email)
+    if not normalized:
+        return []
+    return (
+        User.query.filter(func.lower(func.trim(User.email)) == normalized)
+        .order_by(User.id.asc())
+        .limit(2)
+        .all()
+    )
+
+
+def _single_user_by_email(email):
+    users = _users_by_email(email)
+    if len(users) != 1:
+        return None
+    return users[0]
+
+
 def _firebase_web_config():
     project_id = current_app.config.get("FIREBASE_PROJECT_ID") or ""
     api_key = current_app.config.get("FIREBASE_WEB_API_KEY") or ""
@@ -86,7 +110,7 @@ def register():
             return redirect(url_for("staff.queue"))
         return redirect(url_for("public.home"))
     if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
+        email = _normalize_email(request.form.get("email"))
         password = request.form.get("password") or ""
         confirm = request.form.get("confirm") or ""
         if not email or not _EMAIL_RE.match(email):
@@ -97,7 +121,7 @@ def register():
             flash("Passwords do not match.", "error")
         elif request.form.get("privacy_consent") != "on":
             flash("Confirm that you have read the Privacy Policy.", "error")
-        elif User.query.filter_by(email=email).first():
+        elif _users_by_email(email):
             flash("Could not create that account. Try logging in.", "error")
         else:
             user = User(email=email, role="citizen", auth_provider="password")
@@ -117,9 +141,9 @@ def login():
         return redirect(url_for("public.home"))
     nxt = _safe_next(request.form.get("next") or request.args.get("next"))
     if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
+        email = _normalize_email(request.form.get("email"))
         password = request.form.get("password") or ""
-        user = User.query.filter_by(email=email).first()
+        user = _single_user_by_email(email)
         if user:
             valid = user.check_password(password)
         else:
@@ -146,7 +170,7 @@ def google_login():
         return redirect(url_for("auth.login"))
 
     uid = claims["uid"]
-    email = claims["email"]
+    email = _normalize_email(claims["email"])
     existing_uid = User.query.filter_by(firebase_uid=uid).first()
     if existing_uid:
         if existing_uid.is_staff or existing_uid.role != "citizen":
@@ -154,7 +178,7 @@ def google_login():
             return redirect(url_for("auth.login"))
         return _finish_login(existing_uid, nxt)
 
-    existing_email = User.query.filter_by(email=email).first()
+    existing_email = _users_by_email(email)
     if existing_email:
         flash(_EMAIL_CONFLICT, "error")
         return redirect(url_for("auth.login"))
