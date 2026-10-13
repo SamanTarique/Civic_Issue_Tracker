@@ -42,7 +42,7 @@ def test_home_is_public(client):
     assert login_page.status_code == 200
     assert b"data-password-toggle" in login_page.data
     assert b"Privacy Policy" in login_page.data
-    assert "no-referrer" in login_page.headers.get("Referrer-Policy", "")
+    assert "strict-origin-when-cross-origin" in login_page.headers.get("Referrer-Policy", "")
     assert "Content-Security-Policy" in login_page.headers
     assert login_page.headers.get("Cache-Control") == "no-store"
     assert "geolocation=()" in login_page.headers.get("Permissions-Policy", "")

@@ -41,6 +41,72 @@ def test_login_unknown_and_wrong_password_same_message(client):
     assert b"Email or password is incorrect." in wrong.data
 
 
+def test_register_logout_login_again_with_email_normalization(client):
+    register(client, "  Repeat.User@Example.com ")
+    client.post("/logout")
+    relogin = client.post(
+        "/login",
+        data={"email": " repeat.user@example.com ", "password": "password1"},
+        follow_redirects=True,
+    )
+    assert relogin.status_code == 200
+    assert b"New report" in relogin.data
+
+
+def test_authenticated_user_redirected_away_from_login(client):
+    register(client, "already-in@example.com")
+    response = client.get("/login", follow_redirects=False)
+    assert response.status_code in (302, 303)
+    assert response.headers.get("Location", "").endswith("/")
+
+
+def test_duplicate_legacy_normalized_email_fails_safe(client, app):
+    with app.app_context():
+        from sqlalchemy import text
+        from werkzeug.security import generate_password_hash
+
+        db.session.execute(text("DROP INDEX IF EXISTS ix_users_email_ci_unique"))
+        db.session.execute(
+            text(
+                "INSERT INTO users (email, password_hash, role, auth_provider, created_at) "
+                "VALUES (:email, :password_hash, 'citizen', 'password', CURRENT_TIMESTAMP)"
+            ),
+            {
+                "email": "Legacy@Example.com",
+                "password_hash": generate_password_hash("password1", method=app.config["PASSWORD_HASH_METHOD"]),
+            },
+        )
+        db.session.execute(
+            text(
+                "INSERT INTO users (email, password_hash, role, auth_provider, created_at) "
+                "VALUES (:email, :password_hash, 'citizen', 'password', CURRENT_TIMESTAMP)"
+            ),
+            {
+                "email": " legacy@example.com ",
+                "password_hash": generate_password_hash("password1", method=app.config["PASSWORD_HASH_METHOD"]),
+            },
+        )
+        db.session.commit()
+
+    duplicate = client.post(
+        "/login",
+        data={"email": "legacy@example.com", "password": "password1"},
+        follow_redirects=True,
+    )
+    assert b"Email or password is incorrect." in duplicate.data
+    blocked_register = register(client, "legacy@example.com")
+    assert b"Could not create that account. Try logging in." in blocked_register.data
+
+
+def test_password_hash_not_plaintext_after_register(client, app):
+    register(client, "hash-privacy@example.com")
+    with app.app_context():
+        user = User.query.filter_by(email="hash-privacy@example.com").one()
+        assert user.password_hash != "password1"
+        assert "password1" not in user.password_hash
+        assert user.check_password("password1")
+
+
 def test_photo_is_jpeg_stream_with_thumb(client, app):
     register(client, "thumbs@example.com")
     submit_report(client)
