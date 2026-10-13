@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, stepper with context %}
+{% from "_map.html" import map_head, map_scripts %}
+{% block map_assets %}{{ map_head() }}{% endblock %}
+{% block map_scripts %}{{ map_scripts() }}{% endblock %}
+{% block title %}{{ issue.public_id }}{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('staff.queue') }}">Queue</a></p>
+<h1>{{ issue.public_id }}</h1>
+<p>{{ category_label(issue.category) }} {{ status_badge(issue.status) }}
+  {% if issue.possible_duplicate %}<span class="badge badge-warn">Possible duplicate</span>{% endif %}
+  {% if issue.needs_review %}<span class="badge badge-warn">Needs review</span>{% endif %}
+  · {{ issue.supporter_count() }} affected</p>
+{% if issue.needs_review %}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="action" value="clear_review">
+  <button class="btn btn-secondary" type="submit">Clear review flag</button>
+</form>
+{% endif %}
+{{ stepper(issue.status) }}
+<p>{{ issue.description }}</p>
+<p>Reporter: {{ issue.reporter.email }}</p>
+<p>Exact pin: {{ '%.5f'|format(issue.lat) }}, {{ '%.5f'|format(issue.lng) }}</p>
+<div
+  class="js-map js-map-pin map-frame"
+  data-lat="{{ issue.lat }}"
+  data-lng="{{ issue.lng }}"
+></div>
+
+<div class="photo-pair">
+  <figure class="card">
+    <h3>Before</h3>
+    {% if issue.before_photo() %}
+      <img src="{{ url_for('citizen.photo', photo_id=issue.before_photo().id) }}" alt="Before">
+    {% endif %}
+  </figure>
+  <figure class="card">
+    <h3>After</h3>
+    {% if issue.latest_after_photo() %}
+      <img src="{{ url_for('citizen.photo', photo_id=issue.latest_after_photo().id) }}" alt="After">
+    {% else %}
+      <p>No after photo yet.</p>
+    {% endif %}
+  </figure>
+</div>
+
+{% if issue.extra_before_photos() %}
+  <h2>Later evidence</h2>
+  <div class="grid-3">
+    {% for photo in issue.extra_before_photos() %}
+      <figure class="card">
+        <img src="{{ url_for('citizen.photo', photo_id=photo.id) }}" alt="Additional evidence">
+      </figure>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if allowed %}
+  <form method="post" enctype="multipart/form-data" class="form-section card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h3>Update status</h3>
+    <div class="field">
+      <label for="status">Next status</label>
+      <select id="status" name="status" required>
+        {% for code in allowed %}
+          <option value="{{ code }}">{{ status_label(code) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="note">Note (optional)</label>
+      <textarea id="note" name="note" maxlength="500"></textarea>
+    </div>
+    <div class="field">
+      <label for="photo">After-repair photo (required to mark resolved)</label>
+      <input id="photo" type="file" name="photo" accept="image/jpeg,image/png,image/webp">
+    </div>
+    <button class="btn btn-primary" type="submit">Save</button>
+  </form>
+{% endif %}
+
+<h2>History</h2>
+<ol class="timeline">
+  {% for event in issue.events %}
+    <li class="card">
+      <strong>{{ status_label(event.to_status) }}</strong>
+      {{ event.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+      {% if event.note %}<p>{{ event.note }}</p>{% endif %}
+    </li>
+  {% endfor %}
+</ol>
+{% endblock %}

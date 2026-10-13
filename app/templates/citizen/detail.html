@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, stepper with context %}
+{% block title %}{{ issue.public_id }}{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('citizen.my_reports') }}">My reports</a></p>
+<h1>{{ issue.public_id }}</h1>
+<p>{{ category_label(issue.category) }} {{ status_badge(issue.status) }}</p>
+{{ stepper(issue.status) }}
+<p>{{ issue.description }}</p>
+
+<div class="photo-pair">
+  <figure class="card">
+    <h3>Before</h3>
+    {% if issue.before_photo() %}
+      <img src="{{ url_for('citizen.photo', photo_id=issue.before_photo().id) }}" alt="Before">
+    {% else %}
+      <p>No before photo.</p>
+    {% endif %}
+  </figure>
+  <figure class="card">
+    <h3>After</h3>
+    {% if issue.latest_after_photo() %}
+      <img src="{{ url_for('citizen.photo', photo_id=issue.latest_after_photo().id) }}" alt="After">
+    {% else %}
+      <p>No after photo yet.</p>
+    {% endif %}
+  </figure>
+</div>
+
+<h2>History</h2>
+<ol class="timeline">
+  {% for event in issue.events %}
+    <li class="card">
+      <strong>{{ status_label(event.to_status) }}</strong>
+      {{ event.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+      {% if event.note %}<p>{{ event.note }}</p>{% endif %}
+    </li>
+  {% endfor %}
+</ol>
+
+{% if 'confirmed' in allowed_citizen %}
+  <div class="grid-3">
+    <form method="post" action="{{ url_for('citizen.confirm', public_id=issue.public_id) }}" class="card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <h3>Confirm</h3>
+      <p>The repair is done.</p>
+      <button class="btn btn-primary" type="submit">Confirm</button>
+    </form>
+    <form method="post" action="{{ url_for('citizen.reopen', public_id=issue.public_id) }}" enctype="multipart/form-data" class="card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <h3>Still open</h3>
+      <div class="field">
+        <label for="note">What is left?</label>
+        <textarea id="note" required minlength="8" name="note"></textarea>
+      </div>
+      <div class="field">
+        <label for="reopen-photo">Optional photo</label>
+        <input id="reopen-photo" type="file" name="photo" accept="image/jpeg,image/png,image/webp">
+      </div>
+      <button class="btn btn-secondary" type="submit">Reopen</button>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy{% endblock %}
+{% block content %}
+<article class="card">
+  <h1>Privacy Policy</h1>
+  <p>Local demo. Not legal advice. Fonts are self-hosted. There is no Google Fonts request.</p>
+
+  <h2>We store</h2>
+  <ul>
+    <li>Email. Password accounts also store a password hash, not the password.</li>
+    <li>Google sign-in is optional. For Google accounts we store firebase_uid, email, and created_at only. We do not store your Google name, photo, or tokens.</li>
+    <li>Category, description, status, tracking ID.</li>
+    <li>Your photo, re-saved with no EXIF/GPS in the file.</li>
+    <li>Map pin if you tick consent. Staff see the exact pin.</li>
+  </ul>
+
+  <h2>Google sign-in</h2>
+  <p>Google sign-in is optional. If you use it, we store firebase_uid, email, and created_at only. Google sees that sign-in event and your visitor IP. We never ask for a Google password. Staff accounts cannot be created or granted through Google.</p>
+  <p>Firebase JavaScript files load on the login page, and on the account page only if you signed in with Google (not on Home, reports, or Privacy).</p>
+
+  <h2>Who sees it</h2>
+  <ul>
+    <li>You: your reports.</li>
+    <li>Staff: all reports, email, exact pin.</li>
+    <li>Map (optional): rounded pin, category, status. No name, no ID, no photo.</li>
+  </ul>
+
+  <h2>Location</h2>
+  <p>The form does not request GPS until you press “Use my location”. You can click the map instead.</p>
+  <p>The public map shows opt-in pins only. Pins are rounded. No names, emails, or tracking IDs.</p>
+
+  <h2>Others</h2>
+  <p>Map tiles come from OpenStreetMap (they can see your IP). Leaflet is on this app. Photos are not public files.</p>
+
+  <h2>Accounts</h2>
+  <p>Registering requires you to confirm you have read this policy. We do not show whether an email is already registered. Passwords are hashed. Sessions use an HttpOnly cookie. Log out does not change reports.</p>
+
+  <h2>Delete</h2>
+  <p>Account page: password accounts confirm with the password. Google accounts must sign in again (the server checks that sign-in is within five minutes). Then we delete your Firebase user, report files, and photos, and remove the local account.</p>
+</article>
+{% endblock %}

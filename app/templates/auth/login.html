@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_macros.html" import password_field %}
+{% block title %}Log in{% endblock %}
+{% block extra_head %}
+{% if firebase_web_config %}
+<meta name="coop" content="popup">
+{% endif %}
+{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Log in</h1>
+  <p>Citizen accounts use email or Google. Staff use email only.</p>
+  {% if firebase_web_config %}
+  <p>
+    <button type="button" class="btn btn-secondary btn-block" id="google-login"
+      data-api-key="{{ firebase_web_config.apiKey }}"
+      data-auth-domain="{{ firebase_web_config.authDomain }}"
+      data-project-id="{{ firebase_web_config.projectId }}"
+      data-emulator="{{ firebase_web_config.emulatorHost }}"
+      data-csrf="{{ csrf_token }}">Continue with Google</button>
+  </p>
+  {% endif %}
+  <form method="post" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <div class="field">
+      <label for="email">Email</label>
+      <input required id="email" type="email" name="email" autocomplete="username">
+    </div>
+    {{ password_field("password", "password", "Password", "current-password") }}
+    <button class="btn btn-primary btn-block" type="submit">Log in</button>
+  </form>
+  <p>New here? <a href="{{ url_for('auth.register') }}">Register</a></p>
+  <p>We store a password hash, not your password. Google sign-in is optional. <a href="{{ url_for('public.privacy') }}">Privacy Policy</a></p>
+</div>
+{% endblock %}
+{% block extra_js %}
+{% if firebase_web_config %}
+<script src="{{ url_for('static', filename='vendor/firebase/firebase-app-compat.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/firebase/firebase-auth-compat.js') }}"></script>
+<script src="{{ url_for('static', filename='js/firebase-login.js') }}"></script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_macros.html" import password_field %}
+{% block title %}Register{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Register</h1>
+  <p>Citizen accounts only.</p>
+  <form method="post" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="email">Email</label>
+      <input required id="email" type="email" name="email" autocomplete="username">
+    </div>
+    {{ password_field("password", "password", "Password (8+ characters)", "new-password", True, 8) }}
+    {{ password_field("confirm", "confirm", "Confirm password", "new-password", True, 8) }}
+    <label class="consent">
+      <input required type="checkbox" name="privacy_consent">
+      <span>I have read the <a href="{{ url_for('public.privacy') }}">Privacy Policy</a>.</span>
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Register</button>
+  </form>
+</div>
+{% endblock %}

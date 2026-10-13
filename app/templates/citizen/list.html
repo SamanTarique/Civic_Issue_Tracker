@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, pager with context %}
+{% block title %}My reports{% endblock %}
+{% block content %}
+<h1>My reports</h1>
+{% if not issues %}
+  <div class="empty">
+    <p>No reports yet.</p>
+    <a class="btn btn-primary" href="{{ url_for('citizen.new_report') }}">New report</a>
+  </div>
+{% else %}
+  <div class="stack">
+    {% for issue in issues %}
+      <a class="card report-card" href="{{ url_for('citizen.detail', public_id=issue.public_id) }}">
+        {% if issue.before_photo() %}
+          <img src="{{ url_for('citizen.photo_thumb', photo_id=issue.before_photo().id) }}" alt="" width="72" height="72" loading="lazy">
+        {% endif %}
+        <div>
+          <strong>{{ issue.public_id }}</strong>
+          · {{ category_label(issue.category) }}
+          {{ status_badge(issue.status) }}
+          <p>{{ issue.created_at.strftime('%Y-%m-%d') }}</p>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+  {{ pager(pagination, 'citizen.my_reports') }}
+{% endif %}
+{% endblock %}

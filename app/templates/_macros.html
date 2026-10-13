@@ -1,0 +1,39 @@
+{% macro password_field(id, name, label, autocomplete, required=True, minlength=None) %}
+<div class="field">
+  <label for="{{ id }}">{{ label }}</label>
+  <div class="password-wrap">
+    <input {% if required %}required {% endif %}id="{{ id }}" type="password" name="{{ name }}" autocomplete="{{ autocomplete }}"{% if minlength %} minlength="{{ minlength }}"{% endif %}>
+    <button type="button" class="password-toggle" data-password-toggle="{{ id }}" aria-label="Show password" aria-pressed="false">Show</button>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro status_badge(code) %}
+<span class="badge {% if code == 'confirmed' %}badge-ok{% elif code in ['in_progress', 'reopened', 'marked_resolved'] %}badge-warn{% else %}badge-info{% endif %}">{{ status_label(code) }}</span>
+{% endmacro %}
+
+{% macro stepper(current) %}
+{% set steps = ['reported', 'acknowledged', 'in_progress', 'marked_resolved', 'confirmed'] %}
+<ol class="stepper" aria-label="Status">
+  {% for step in steps %}
+    <li class="badge {% if current == step or (current == 'reopened' and step == 'in_progress') %}is-current{% endif %}">{{ status_label(step) }}</li>
+  {% endfor %}
+  {% if current == 'reopened' %}
+    <li class="badge badge-warn is-current">Reopened</li>
+  {% endif %}
+</ol>
+{% endmacro %}
+
+{% macro pager(pagination, endpoint) %}
+{% if pagination.pages > 1 %}
+  <nav class="nav" aria-label="Pagination">
+    {% if pagination.has_prev %}
+      <a class="btn btn-secondary" href="{{ url_for(endpoint, page=pagination.prev_num, **kwargs) }}">Previous</a>
+    {% endif %}
+    <span class="badge">{{ pagination.page }} / {{ pagination.pages }}</span>
+    {% if pagination.has_next %}
+      <a class="btn btn-secondary" href="{{ url_for(endpoint, page=pagination.next_num, **kwargs) }}">Next</a>
+    {% endif %}
+  </nav>
+{% endif %}
+{% endmacro %}

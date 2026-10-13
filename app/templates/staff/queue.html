@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, pager with context %}
+{% block title %}Staff queue{% endblock %}
+{% block content %}
+<h1>Queue</h1>
+<form method="get" class="field">
+  <label for="status">Status</label>
+  <select id="status" name="status" data-autosubmit>
+    <option value="">All</option>
+    {% for code in status_options %}
+      <option value="{{ code }}" {% if status_filter == code %}selected{% endif %}>{{ status_label(code) }}</option>
+    {% endfor %}
+  </select>
+</form>
+{% if not issues %}
+  <div class="empty"><p>No reports in this view.</p></div>
+{% else %}
+  <div class="stack">
+    {% for issue in issues %}
+      <a class="card report-card" href="{{ url_for('staff.detail', public_id=issue.public_id) }}">
+        {% if issue.before_photo() %}
+          <img src="{{ url_for('citizen.photo_thumb', photo_id=issue.before_photo().id) }}" alt="" width="72" height="72" loading="lazy">
+        {% endif %}
+        <div>
+          <strong>{{ issue.public_id }}</strong>
+          · {{ category_label(issue.category) }}
+          {{ status_badge(issue.status) }}
+          {% if issue.possible_duplicate %}<span class="badge badge-warn">Possible duplicate</span>{% endif %}
+          {% if issue.needs_review %}<span class="badge badge-warn">Needs review</span>{% endif %}
+          <p>{{ issue.updated_at.strftime('%Y-%m-%d') }} · {{ issue.supporter_count() }} affected</p>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+  {{ pager(pagination, 'staff.queue', status=status_filter) }}
+{% endif %}
+{% endblock %}

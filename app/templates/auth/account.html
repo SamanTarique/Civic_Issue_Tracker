@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import password_field %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Account</h1>
+  <p>{{ current_user.email }}</p>
+  <form method="post" action="{{ url_for('auth.logout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn btn-secondary" type="submit">Log out</button>
+  </form>
+  <p>Log out does not delete reports. Delete removes your reports and photos.</p>
+  {% if current_user.auth_provider == 'google' %}
+  <form method="post" class="card" data-confirm="Delete account and reports? This cannot be undone." id="google-delete-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="delete">
+    <input type="hidden" name="id_token" id="google-id-token">
+    <p>Google accounts must sign in again first.</p>
+    <button class="btn btn-danger" type="button" id="google-reauth"
+      data-api-key="{{ firebase_web_config.apiKey if firebase_web_config else '' }}"
+      data-auth-domain="{{ firebase_web_config.authDomain if firebase_web_config else '' }}"
+      data-project-id="{{ firebase_web_config.projectId if firebase_web_config else '' }}"
+      data-emulator="{{ firebase_web_config.emulatorHost if firebase_web_config else '' }}">Delete my account</button>
+  </form>
+  {% else %}
+  <form method="post" class="card" data-confirm="Delete account and reports? This cannot be undone.">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="delete">
+    {{ password_field("password", "password", "Password", "current-password") }}
+    <button class="btn btn-danger" type="submit">Delete my account</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+{% block extra_js %}
+{% if current_user.auth_provider == 'google' and firebase_web_config %}
+<script src="{{ url_for('static', filename='vendor/firebase/firebase-app-compat.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/firebase/firebase-auth-compat.js') }}"></script>
+<script src="{{ url_for('static', filename='js/firebase-delete.js') }}"></script>
+{% endif %}
+{% endblock %}

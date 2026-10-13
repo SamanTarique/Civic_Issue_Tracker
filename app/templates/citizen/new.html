@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "_map.html" import map_head, map_scripts %}
+{% block title %}New report{% endblock %}
+{% block map_assets %}{{ map_head() }}{% endblock %}
+{% block map_scripts %}{{ map_scripts() }}{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/report-form.js') }}"></script>
+{% endblock %}
+{% block content %}
+<h1>New report</h1>
+{% if duplicate %}
+<div class="card flash">
+  <p>A similar report already exists nearby</p>
+  <p>{{ duplicate.category }} · {{ duplicate.status }} · {{ duplicate.distance }}</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="duplicate_action" value="support">
+    <button class="btn btn-primary" type="submit">I'm affected too</button>
+  </form>
+</div>
+{% endif %}
+<form method="post" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% if duplicate %}
+  <input type="hidden" name="duplicate_action" value="different">
+  {% endif %}
+  <input type="hidden" name="lat" id="lat" value="{{ form.get('lat') if form else '' }}">
+  <input type="hidden" name="lng" id="lng" value="{{ form.get('lng') if form else '' }}">
+
+  <section class="form-section card">
+    <h3>Photo</h3>
+    <div class="field">
+      <label for="photo">Before photo</label>
+      <input required id="photo" type="file" name="photo" accept="image/jpeg,image/png,image/webp">
+      <img id="photo-preview" class="preview" alt="Selected photo preview" hidden>
+    </div>
+  </section>
+
+  <section class="form-section card">
+    <h3>Location</h3>
+    <p>Click the map. GPS only if you press the button.</p>
+    <p><button type="button" class="btn btn-secondary" id="use-location">Use my location</button></p>
+    <div
+      class="js-map js-map-picker map-frame"
+      data-lat-input="lat"
+      data-lng-input="lng"
+      data-geo-button="use-location"
+      data-default-lat="{{ map_default_lat }}"
+      data-default-lng="{{ map_default_lng }}"
+    ></div>
+  </section>
+
+  <section class="form-section card">
+    <h3>Details</h3>
+    <div class="field">
+      <label for="category">Category</label>
+      <select id="category" name="category" required>
+        <option value="">Select…</option>
+        {% for cat in categories %}
+          <option value="{{ cat }}" {% if form and form.get('category') == cat %}selected{% endif %}>{{ category_label(cat) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" required minlength="10" maxlength="1000" placeholder="What is wrong?">{% if form %}{{ form.get('description') or '' }}{% endif %}</textarea>
+    </div>
+  </section>
+
+  <section class="form-section card">
+    <h3>Consent</h3>
+    <label class="consent">
+      <input required type="checkbox" name="photo_consent">
+      <span>Store this photo. File GPS will be removed.</span>
+    </label>
+    <label class="consent">
+      <input required type="checkbox" name="location_consent">
+      <span>Store this pin for staff.</span>
+    </label>
+    <label class="consent">
+      <input type="checkbox" name="public_map_consent">
+      <span>Rounded pin on the map (no name, no ID).</span>
+    </label>
+  </section>
+
+  <div class="sticky-submit">
+    <button class="btn btn-primary btn-block" type="submit">{% if duplicate %}This is a different issue{% else %}Submit{% endif %}</button>
+  </div>
+</form>
+{% endblock %}
