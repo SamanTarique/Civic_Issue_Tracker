@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>{% block title %}Civic Tracker{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=theme8">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=theme9">
   {% block extra_head %}{% endblock %}
   {% block map_assets %}{% endblock %}
 </head>
@@ -61,7 +61,7 @@
       · Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>
     </div>
   </footer>
-  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}?v=ui2"></script>
   {% block extra_js %}{% endblock %}
   {% block map_scripts %}{% endblock %}
 </body>

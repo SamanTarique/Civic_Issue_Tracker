@@ -1,4 +1,13 @@
 (function () {
+  function findSubmitControl(form, submitter) {
+    if (submitter && submitter.form === form) {
+      return submitter;
+    }
+    return form.querySelector(
+      "button[type='submit'], input[type='submit']"
+    );
+  }
+
   document.querySelectorAll("form[data-confirm]").forEach(function (form) {
     form.addEventListener("submit", function (event) {
       if (form.querySelector("#google-id-token")) {
@@ -6,6 +15,27 @@
       }
       if (!window.confirm(form.getAttribute("data-confirm"))) {
         event.preventDefault();
+        return;
+      }
+      if (typeof form.checkValidity === "function" && !form.checkValidity()) {
+        return;
+      }
+      var submitControl = findSubmitControl(form, event.submitter);
+      if (submitControl && submitControl.classList) {
+        submitControl.classList.add("is-loading");
+        submitControl.setAttribute("aria-busy", "true");
+      }
+    });
+  });
+  document.querySelectorAll("form:not([data-confirm])").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+      if (typeof form.checkValidity === "function" && !form.checkValidity()) {
+        return;
+      }
+      var submitControl = findSubmitControl(form, event.submitter);
+      if (submitControl && submitControl.classList) {
+        submitControl.classList.add("is-loading");
+        submitControl.setAttribute("aria-busy", "true");
       }
     });
   });
