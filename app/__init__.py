@@ -1,3 +1,4 @@
+import os
 import secrets
 from pathlib import Path
 
@@ -174,7 +175,9 @@ def create_app(test_config=None):
     def set_security_headers(response):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        # strict-origin (not no-referrer): OpenStreetMap tiles reject requests
+        # that omit the Referer header, so the map is blank on a deployed site.
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["X-DNS-Prefetch-Control"] = "off"
         from flask_login import current_user
 
@@ -257,7 +260,22 @@ def create_app(test_config=None):
 
             ensure_staff_user()
 
+    if _trust_proxy(app):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        # One hop (Render, PythonAnywhere, Fly). Without this, every visitor
+        # shares the proxy IP, so the login limit (5/minute) locks the site,
+        # and external staff links are generated as http://.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     return app
+
+
+def _trust_proxy(app):
+    render = (os.environ.get("RENDER") or "").strip().lower()
+    if render in {"1", "true", "yes", "on"}:
+        return True
+    return (app.config.get("APP_ENV") or "") == "production"
 
 
 def _ensure_sqlite_user_auth_columns():

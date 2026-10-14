@@ -60,16 +60,31 @@ def _env_bool(name, default=False):
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def database_url():
+    """SQLite by default. Render Postgres URLs use postgres://, which SQLAlchemy 2 rejects."""
+    raw = (os.environ.get("DATABASE_URL") or "").strip()
+    if not raw:
+        return "sqlite:///" + str(BASE_DIR / "instance" / "civic.db")
+    if raw.startswith("postgres://"):
+        return "postgresql://" + raw[len("postgres://"):]
+    return raw
+
+
+def listen_address():
+    """Local runs stay on loopback. Render sets PORT and connects from outside the container."""
+    raw = (os.environ.get("PORT") or "").strip()
+    if raw:
+        return "0.0.0.0", int(raw)
+    return "127.0.0.1", 5000
+
+
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY") or ""
     APP_ENV = os.environ.get("APP_ENV", "development")
     DEBUG = _env_bool("FLASK_DEBUG", False) or _env_bool("DEBUG", False)
     TEMPLATES_AUTO_RELOAD = APP_ENV != "production"
 
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL",
-        "sqlite:///" + str(BASE_DIR / "instance" / "civic.db"),
-    )
+    SQLALCHEMY_DATABASE_URI = database_url()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     UPLOAD_FOLDER = os.environ.get(
