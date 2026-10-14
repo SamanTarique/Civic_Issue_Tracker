@@ -45,6 +45,7 @@ Edit `.env`:
 - `SECRET_KEY` — long random string (never the example placeholder)
 - `STAFF_EMAIL` / `STAFF_PASSWORD` — first staff login
 - Optional: department emails, SMTP, Firebase names (see `.env.example`)
+- Optional: `DATABASE_URL`. Unset stays on SQLite. `postgres://` or `postgresql://` uses PostgreSQL and runs migrations on startup.
 
 ### 2. Run locally
 
@@ -98,7 +99,7 @@ Optional staff recreate: `python scripts/seed.py`.
 
 ### Render
 
-Python 3.12. Build `pip install -r requirements.txt`. Start `sh scripts/start.sh`. Health check `/`. Set `STAFF_EMAIL`, `STAFF_PASSWORD`, and `STAFF_DEPARTMENT`. The blueprint supplies `SECRET_KEY`. A free Render instance cannot keep the SQLite file. SQLite stays the default, including the blueprint disk. For Render Postgres, set `DATABASE_URL` to that database’s URL (`postgres://` or `postgresql://`). Other hosts and the longer steps are in [DEPLOY.md](DEPLOY.md).
+Python 3.12. Build `pip install -r requirements.txt`. Start `sh scripts/start.sh`. Health check `/`. Set `STAFF_EMAIL`, `STAFF_PASSWORD`, and `STAFF_DEPARTMENT`. The blueprint supplies `SECRET_KEY`. A free Render instance cannot keep the SQLite file. SQLite stays the default, and a SQLite deploy still boots. For Render Postgres, set `DATABASE_URL` to the Render Postgres URL (`postgres://` or `postgresql://`); startup uses that database and runs migrations. Other hosts and the longer steps are in [DEPLOY.md](DEPLOY.md).
 
 ---
 
@@ -157,11 +158,11 @@ Use **your own** inboxes for tests.
 
 Failures are logged as a generic line (no addresses, no coordinates) and never fail the report.
 
-When staff mark a report resolved, the resident gets one plain email: tracking ID, status, and the report link. `EMAIL_BACKEND=console`, or SMTP with no host, logs that and still saves the status. If sending throws, the resolve stays saved and the failure is logged.
+When staff mark a report resolved, the resident gets one plain email if SMTP is configured (tracking ID, status, and the report link). Console, or a missing host, logs that and the resolve still saves. If sending throws, the resolve stays saved and the failure is logged.
 
 ### Photo quality (Stage 1)
 
-Pillow only, no CLIP. Checks a downscaled grayscale copy: min edge, Laplacian-style blur, mean brightness, perceptual dHash. The database narrows stored dHashes; Python compares only that short list. Same user uploading a near-identical photo is rejected; another user’s similar photo is flagged for review. `PHOTO_AI_ENABLED` is a placeholder and is not implemented. Evaluate a folder: `python scripts/eval_photos.py path\to\folder` (prints “No photos supplied.” if empty).
+Pillow only, no CLIP. Checks a downscaled grayscale copy: min edge, Laplacian-style blur, mean brightness, perceptual dHash. Duplicate photos are narrowed in the database; Python compares only that small set. Same user uploading a near-identical photo is rejected; another user’s similar photo is flagged for review. `PHOTO_AI_ENABLED` is a placeholder and is not implemented. Evaluate a folder: `python scripts/eval_photos.py path\to\folder` (prints “No photos supplied.” if empty).
 
 ### Privacy (matches `/privacy`)
 
