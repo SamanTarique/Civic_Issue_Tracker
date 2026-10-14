@@ -73,6 +73,8 @@ Required env: `SECRET_KEY` (the blueprint generates one), `APP_ENV=production`, 
 
 The blueprint uses plan `0.5c-512mb` and a 1 GB disk mounted at `/opt/render/project/src/instance` (`DATABASE_URL` and `UPLOAD_FOLDER` point there). Free instances cannot attach a disk, so SQLite and photos would disappear on sleep or redeploy. New Render services default to Python 3.14, which has no wheel for pinned Pillow 10.4.0 and fails the build.
 
+Optional Postgres: set `DATABASE_URL` to the Render Postgres URL (`postgres://` or `postgresql://`). Startup runs the migrations on that database. Leave the blueprint SQLite URL in place for a disk deploy; that path still boots with no Postgres.
+
 `python run.py` is for a laptop. It listens on `127.0.0.1:5000` unless `PORT` is set. Render's scanner cannot see a loopback-only process, and `python wsgi.py` exits immediately because that file does not start a server. `scripts/start.sh` runs gunicorn on `0.0.0.0:$PORT` with one worker and without `--preload` (Render's default `GUNICORN_CMD_ARGS` preloads, then forks a dead SQLite connection).
 
 Tables are created when the process starts. Do not run `flask db upgrade` as a pre-deploy command: that step cannot see the persistent disk.

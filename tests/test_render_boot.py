@@ -29,6 +29,14 @@ def test_blank_database_url_stays_on_sqlite(monkeypatch):
     assert database_url().startswith("sqlite:///")
 
 
+def test_sqlite_boot_does_not_run_migrations(tmp_path, monkeypatch):
+    def fail_upgrade(*_args, **_kwargs):
+        raise AssertionError("SQLite boot must not migrate")
+
+    monkeypatch.setattr("flask_migrate.upgrade", fail_upgrade)
+    create_app(app_config(tmp_path))
+
+
 def test_production_trusts_one_proxy_hop(tmp_path):
     application = create_app(
         app_config(tmp_path, APP_ENV="production", TESTING=False, SECRET_KEY="unique-prod-secret")

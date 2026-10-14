@@ -54,6 +54,78 @@ def hamming_hex(left: str, right: str) -> int:
     return bin(int(left, 16) ^ int(right, 16)).count("1")
 
 
+_HEX_DIGITS = "0123456789abcdef"
+
+
+def hex_slice_spans(width, part_count):
+    """Contiguous slices that cover every character exactly once."""
+    if part_count < 1 or part_count > width:
+        raise ValueError("part_count must fit in the hash")
+    base, extra = divmod(width, part_count)
+    spans = []
+    start = 0
+    for index in range(part_count):
+        length = base + (1 if index < extra else 0)
+        spans.append((start, length))
+        start += length
+    return tuple(spans)
+
+
+def _high_pair_chars(nibble):
+    group = int(nibble, 16) >> 2
+    start = group * 4
+    return _HEX_DIGITS[start : start + 4]
+
+
+def _low_pair_chars(nibble):
+    group = int(nibble, 16) & 3
+    return _HEX_DIGITS[group::4]
+
+
+def _bit_chars(nibble, bit_from_msb):
+    wanted = (int(nibble, 16) >> (3 - bit_from_msb)) & 1
+    chars = [
+        _HEX_DIGITS[value]
+        for value in range(16)
+        if ((value >> (3 - bit_from_msb)) & 1) == wanted
+    ]
+    return "".join(chars)
+
+
+def prefilter_covers(stored, query, max_distance):
+    """True when a hash must be loaded for a Python Hamming check.
+
+    A hash within ``max_distance`` always shares one slice (or one bit
+    group, once slices are too coarse). Hashes outside that distance may
+    still match the predicate; the caller drops those after Hamming.
+    """
+    stored = (stored or "").strip().lower()
+    query = (query or "").strip().lower()
+    if len(stored) != 16 or len(query) != 16:
+        return False
+    if any(char not in _HEX_DIGITS for char in stored + query):
+        return False
+    if max_distance >= 64:
+        return True
+    if max_distance <= 0:
+        return stored == query
+    if max_distance <= 15:
+        for start, length in hex_slice_spans(16, max_distance + 1):
+            if stored[start : start + length] == query[start : start + length]:
+                return True
+        return False
+    if max_distance <= 31:
+        for index, nibble in enumerate(query):
+            if stored[index] in _high_pair_chars(nibble) or stored[index] in _low_pair_chars(nibble):
+                return True
+        return False
+    for index, nibble in enumerate(query):
+        for bit in range(4):
+            if stored[index] in _bit_chars(nibble, bit):
+                return True
+    return False
+
+
 def laplacian_variance(gray: Image.Image) -> float:
     pixels = gray.load()
     width, height = gray.size

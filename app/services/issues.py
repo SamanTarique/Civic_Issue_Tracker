@@ -2,7 +2,7 @@ import math
 from datetime import timedelta
 
 from flask import current_app, session
-from sqlalchemy import select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
@@ -18,7 +18,16 @@ from app.models import (
     utcnow,
 )
 from app.services.images import UploadError, delete_photo_file, save_issue_photo
-from app.services.photo_check import REJECT, WARN, evaluate_path, hamming_hex
+from app.services.photo_check import (
+    REJECT,
+    WARN,
+    _bit_chars,
+    _high_pair_chars,
+    _low_pair_chars,
+    evaluate_path,
+    hamming_hex,
+    hex_slice_spans,
+)
 from app.services.status_machine import citizen_allowed, staff_allowed, status_label
 from pathlib import Path
 
@@ -168,6 +177,57 @@ def recently_fixed_demo(limit=6):
     return rows
 
 
+def _dhash_narrow_clause(digest, max_distance):
+    """SQL predicate that cannot drop a hash within max_distance.
+
+    ``substr`` and ``lower`` are the same on SQLite and PostgreSQL. For the
+    default distance the hash is split into distance+1 slices: a hit must
+    share one slice. Wider distances use 2-bit, then 1-bit, groups.
+    """
+    if max_distance >= 64:
+        return None
+    folded = func.lower(IssuePhoto.dhash)
+    if max_distance <= 0:
+        return folded == digest
+    if max_distance <= 15:
+        parts = []
+        for start, length in hex_slice_spans(16, max_distance + 1):
+            piece = digest[start : start + length]
+            parts.append(func.substr(folded, start + 1, length) == piece)
+        return or_(*parts)
+    if max_distance <= 31:
+        parts = []
+        for index, nibble in enumerate(digest):
+            char = func.substr(folded, index + 1, 1)
+            parts.append(char.in_(tuple(_high_pair_chars(nibble))))
+            parts.append(char.in_(tuple(_low_pair_chars(nibble))))
+        return or_(*parts)
+    parts = []
+    for index, nibble in enumerate(digest):
+        char = func.substr(folded, index + 1, 1)
+        for bit in range(4):
+            parts.append(char.in_(tuple(_bit_chars(nibble, bit))))
+    return or_(*parts)
+
+
+def similar_photo_candidates(digest, max_distance):
+    """Rows the database still allows, lowest id first.
+
+    Python then applies the same Hamming cut as the old full-table scan.
+    """
+    digest = (digest or "").strip().lower()
+    if len(digest) != 16 or any(char not in "0123456789abcdef" for char in digest):
+        return []
+    max_distance = int(max_distance)
+    query = IssuePhoto.query.with_entities(IssuePhoto.dhash, IssuePhoto.uploaded_by).filter(
+        IssuePhoto.dhash.isnot(None)
+    )
+    clause = _dhash_narrow_clause(digest, max_distance)
+    if clause is not None:
+        query = query.filter(clause)
+    return query.order_by(IssuePhoto.id.asc()).all()
+
+
 def _photo_quality(user, filename, error_cls=None):
     error_cls = error_cls or ReportError
     path = Path(current_app.config["UPLOAD_FOLDER"]) / filename
@@ -177,12 +237,7 @@ def _photo_quality(user, filename, error_cls=None):
         raise error_cls(check.message)
     max_d = int(current_app.config.get("PHOTO_DHASH_MAX_DISTANCE") or 10)
     if check.dhash:
-        rows = (
-            IssuePhoto.query.with_entities(IssuePhoto.dhash, IssuePhoto.uploaded_by)
-            .filter(IssuePhoto.dhash.isnot(None))
-            .all()
-        )
-        for digest, uploader in rows:
+        for digest, uploader in similar_photo_candidates(check.dhash, max_d):
             if hamming_hex(check.dhash, digest) > max_d:
                 continue
             if uploader == user.id:
@@ -377,6 +432,17 @@ def apply_staff_transition(public_id, actor, to_status, note, photo_file=None):
                 issue.needs_review = True
     record_status(issue, actor, to_status, note=note or None)
     db.session.commit()
+    if to_status == "marked_resolved":
+        try:
+            from app.services.notifications import notify_marked_resolved
+
+            notify_marked_resolved(issue)
+        except Exception:
+            import logging
+
+            logging.getLogger("civic.notifications").warning(
+                "Resolved report email could not be sent."
+            )
     return issue
 
 

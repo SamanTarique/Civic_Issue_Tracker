@@ -19,7 +19,7 @@ Mobile captures also live in `docs/screenshots/` (`*-375.png`).
 
 | | |
 |---|---|
-| Stack | Flask 3, Flask-Login, SQLAlchemy, Flask-Migrate, Flask-Limiter, Pillow, SQLite |
+| Stack | Flask 3, Flask-Login, SQLAlchemy, Flask-Migrate, Flask-Limiter, Pillow, SQLite (optional Postgres) |
 | Maps | Leaflet + OpenStreetMap tiles (no Google Maps) |
 | Auth | Email/password; optional Google sign-in for **citizens only** (Firebase) |
 | Photos | JPEG stored locally, EXIF stripped, login-only download |
@@ -98,7 +98,7 @@ Optional staff recreate: `python scripts/seed.py`.
 
 ### Render
 
-Python 3.12. Build `pip install -r requirements.txt`. Start `sh scripts/start.sh`. Health check `/`. Set `STAFF_EMAIL`, `STAFF_PASSWORD`, and `STAFF_DEPARTMENT`. The blueprint supplies `SECRET_KEY`. A free Render instance cannot keep the SQLite file. Other hosts and the longer steps are in [DEPLOY.md](DEPLOY.md).
+Python 3.12. Build `pip install -r requirements.txt`. Start `sh scripts/start.sh`. Health check `/`. Set `STAFF_EMAIL`, `STAFF_PASSWORD`, and `STAFF_DEPARTMENT`. The blueprint supplies `SECRET_KEY`. A free Render instance cannot keep the SQLite file. SQLite stays the default, including the blueprint disk. For Render Postgres, set `DATABASE_URL` to that database’s URL (`postgres://` or `postgresql://`). Other hosts and the longer steps are in [DEPLOY.md](DEPLOY.md).
 
 ---
 
@@ -157,9 +157,11 @@ Use **your own** inboxes for tests.
 
 Failures are logged as a generic line (no addresses, no coordinates) and never fail the report.
 
+When staff mark a report resolved, the resident gets one plain email: tracking ID, status, and the report link. `EMAIL_BACKEND=console`, or SMTP with no host, logs that and still saves the status. If sending throws, the resolve stays saved and the failure is logged.
+
 ### Photo quality (Stage 1)
 
-Pillow only, no CLIP. Checks a downscaled grayscale copy: min edge, Laplacian-style blur, mean brightness, perceptual dHash. Same user uploading a near-identical photo is rejected; another user’s similar photo is flagged for review. `PHOTO_AI_ENABLED` is a placeholder and is not implemented. Evaluate a folder: `python scripts/eval_photos.py path\to\folder` (prints “No photos supplied.” if empty).
+Pillow only, no CLIP. Checks a downscaled grayscale copy: min edge, Laplacian-style blur, mean brightness, perceptual dHash. The database narrows stored dHashes; Python compares only that short list. Same user uploading a near-identical photo is rejected; another user’s similar photo is flagged for review. `PHOTO_AI_ENABLED` is a placeholder and is not implemented. Evaluate a folder: `python scripts/eval_photos.py path\to\folder` (prints “No photos supplied.” if empty).
 
 ### Privacy (matches `/privacy`)
 
@@ -207,11 +209,10 @@ Civic_Issue_Tracker/
 ## Future improvements
 
 - Real department accounts and an official case-management handoff (this demo is not that).
-- PostgreSQL or another hosted database instead of SQLite on a sleeping free host.
+- Backups for the optional Postgres database, and a larger store than this demo needs.
 - Object storage for photos so uploads survive VM restarts.
 - Shared rate-limit storage (Redis) for multiple workers.
 - CLIP or a similar model behind `PHOTO_AI_ENABLED` (not implemented).
-- Hamming search in the database instead of loading all dHashes.
 - Multi-worker duplicate detection beyond SQLite `BEGIN IMMEDIATE`.
 - SMS or in-app notifications in addition to department email.
 - Proper HA / backups if this were ever used with real civic data.

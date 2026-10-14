@@ -253,8 +253,7 @@ def create_app(test_config=None):
     _register_cli(app)
 
     with app.app_context():
-        db.create_all()
-        _ensure_sqlite_user_auth_columns()
+        _prepare_database(app)
         if not app.config.get("TESTING"):
             from app.models import ensure_staff_user
 
@@ -276,6 +275,18 @@ def _trust_proxy(app):
     if render in {"1", "true", "yes", "on"}:
         return True
     return (app.config.get("APP_ENV") or "") == "production"
+
+
+def _prepare_database(app):
+    """SQLite boots with create_all. Postgres uses the Alembic migrations."""
+    uri = str(app.config.get("SQLALCHEMY_DATABASE_URI") or "")
+    if uri.startswith("postgresql") or uri.startswith("postgres://"):
+        from flask_migrate import upgrade
+
+        upgrade(directory=str(Path(app.root_path).parent / "migrations"))
+        return
+    db.create_all()
+    _ensure_sqlite_user_auth_columns()
 
 
 def _ensure_sqlite_user_auth_columns():
