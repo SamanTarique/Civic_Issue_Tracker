@@ -1,467 +1,203 @@
+import re
 import secrets
-from datetime import datetime, timezone
+from urllib.parse import urlparse
 
-from flask import current_app
-from flask_login import UserMixin
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import func
-from sqlalchemy.orm import validates
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from app import db
+from app import db, limiter
+from app.models import User
+from app.services.firebase_auth import TokenError, delete_firebase_user, verify_id_token
+from app.services.issues import ReportError, delete_citizen_account
+
+auth_bp = Blueprint("auth", __name__)
+_GOOGLE_FAIL = "Google sign-in failed."
+_EMAIL_CONFLICT = "This email already has a password account. Log in with email and password."
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$")
 
 
-def utcnow():
-    return datetime.now(timezone.utc)
+def _dummy_hash():
+    cached = current_app.config.get("_DUMMY_PASSWORD_HASH")
+    if cached:
+        return cached
+    method = current_app.config.get("PASSWORD_HASH_METHOD") or "pbkdf2:sha256:260000"
+    value = generate_password_hash("civic-tracker-dummy-hash", method=method)
+    current_app.config["_DUMMY_PASSWORD_HASH"] = value
+    return value
 
 
-def normalize_email(value):
-    if value is None:
-        return ""
-    return str(value).strip().casefold()
+def _safe_next(target):
+    if not target or not target.startswith("/") or target.startswith("//"):
+        return None
+    if "\\" in target or ":" in target:
+        return None
+    parsed = urlparse(target)
+    return None if parsed.scheme or parsed.netloc else target
 
 
-class User(UserMixin, db.Model):
-    __tablename__ = "users"
-
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(255), nullable=True)
-    role = db.Column(db.String(32), nullable=False, default="citizen")
-    department = db.Column(db.String(32), nullable=True)
-    firebase_uid = db.Column(db.String(128), unique=True, nullable=True, index=True)
-    auth_provider = db.Column(db.String(32), nullable=False, default="password")
-    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
-
-    issues = db.relationship("Issue", back_populates="reporter", foreign_keys="Issue.reporter_id")
-
-    @staticmethod
-    def normalize_email(value):
-        return normalize_email(value)
-
-    @validates("email")
-    def validate_email(self, key, value):
-        return self.normalize_email(value)
-
-    @classmethod
-    def find_by_email(cls, value):
-        normalized = cls.normalize_email(value)
-        if not normalized:
-            return None
-        matches = cls.query.filter(func.lower(func.trim(cls.email)) == normalized).all()
-        if len(matches) > 1:
-            return None
-        return matches[0] if matches else None
-
-    def set_password(self, password):
-        method = "pbkdf2:sha256:260000"
-        try:
-            method = current_app.config.get("PASSWORD_HASH_METHOD") or method
-        except RuntimeError:
-            pass
-        self.password_hash = generate_password_hash(password, method=method)
-
-    def check_password(self, password):
-        if not self.password_hash:
-            return False
-        return check_password_hash(self.password_hash, password)
-
-    @property
-    def is_staff(self):
-        return self.role in ("staff", "admin")
-
-    @property
-    def is_admin(self):
-        return self.role == "admin"
+def _rotate_session():
+    session.clear()
+    session["csrf_token"] = secrets.token_hex(16)
 
 
-class Issue(db.Model):
-    __tablename__ = "issues"
-
-    id = db.Column(db.Integer, primary_key=True)
-    public_id = db.Column(db.String(16), unique=True, nullable=False, index=True)
-    reporter_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
-    category = db.Column(db.String(64), nullable=False)
-    description = db.Column(db.Text, nullable=False)
-    lat = db.Column(db.Float, nullable=False, index=True)
-    lng = db.Column(db.Float, nullable=False, index=True)
-    location_consent = db.Column(db.Boolean, nullable=False, default=False)
-    public_map_consent = db.Column(db.Boolean, nullable=False, default=False)
-    status = db.Column(db.String(32), nullable=False, default="reported", index=True)
-    parent_issue_id = db.Column(db.Integer, db.ForeignKey("issues.id"), nullable=True)
-    possible_duplicate = db.Column(db.Boolean, nullable=False, default=False)
-    is_demo = db.Column(db.Boolean, nullable=False, default=False)
-    needs_review = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
-    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
-
-    reporter = db.relationship("User", back_populates="issues", foreign_keys=[reporter_id])
-    photos = db.relationship(
-        "IssuePhoto",
-        back_populates="issue",
-        cascade="all, delete-orphan",
-        order_by="IssuePhoto.created_at",
-    )
-    events = db.relationship(
-        "StatusEvent",
-        back_populates="issue",
-        cascade="all, delete-orphan",
-        order_by="StatusEvent.created_at",
-    )
-    parent = db.relationship("Issue", remote_side=[id], uselist=False)
-    supporters = db.relationship("IssueSupporter", back_populates="issue", cascade="all, delete-orphan")
-
-    def supporter_count(self):
-        return len(self.supporters)
-
-    def before_photos(self):
-        return [photo for photo in self.photos if photo.kind == "before"]
-
-    def before_photo(self):
-        photos = self.before_photos()
-        return photos[0] if photos else None
-
-    def extra_before_photos(self):
-        return self.before_photos()[1:]
-
-    def after_photos(self):
-        return [photo for photo in self.photos if photo.kind == "after"]
-
-    def latest_after_photo(self):
-        after = self.after_photos()
-        return after[-1] if after else None
-
-    def has_after_photo(self):
-        return any(photo.kind == "after" for photo in self.photos)
+def _firebase_web_config():
+    project_id = current_app.config.get("FIREBASE_PROJECT_ID") or ""
+    api_key = current_app.config.get("FIREBASE_WEB_API_KEY") or ""
+    auth_domain = current_app.config.get("FIREBASE_AUTH_DOMAIN") or ""
+    if not (project_id and api_key and auth_domain):
+        return None
+    return {
+        "apiKey": api_key,
+        "authDomain": auth_domain,
+        "projectId": project_id,
+        "emulatorHost": current_app.config.get("FIREBASE_AUTH_EMULATOR_HOST") or "",
+    }
 
 
-class IssuePhoto(db.Model):
-    __tablename__ = "issue_photos"
-
-    id = db.Column(db.Integer, primary_key=True)
-    issue_id = db.Column(db.Integer, db.ForeignKey("issues.id"), nullable=False, index=True)
-    kind = db.Column(db.String(16), nullable=False)
-    filename = db.Column(db.String(255), nullable=False)
-    dhash = db.Column(db.String(16), nullable=True, index=True)
-    uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
-
-    issue = db.relationship("Issue", back_populates="photos")
-    uploader = db.relationship("User")
+def _find_user_by_email(email):
+    normalized = User.normalize_email(email)
+    if not normalized:
+        return None
+    matches = User.query.filter(func.lower(func.trim(User.email)) == normalized).all()
+    return matches[0] if len(matches) == 1 else None
 
 
-class IssueSupporter(db.Model):
-    __tablename__ = "issue_supporters"
-    __table_args__ = (db.UniqueConstraint("issue_id", "user_id", name="uq_issue_supporter"),)
-
-    id = db.Column(db.Integer, primary_key=True)
-    issue_id = db.Column(db.Integer, db.ForeignKey("issues.id"), nullable=False, index=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
-
-    issue = db.relationship("Issue", back_populates="supporters")
-    user = db.relationship("User")
+def _finish_login(user, nxt=None):
+    _rotate_session()
+    login_user(user, remember=True)
+    if nxt:
+        return redirect(nxt)
+    return redirect(url_for("staff.queue" if user.is_staff else "public.home"))
 
 
-class StatusEvent(db.Model):
-    __tablename__ = "status_events"
-
-    id = db.Column(db.Integer, primary_key=True)
-    issue_id = db.Column(db.Integer, db.ForeignKey("issues.id"), nullable=False, index=True)
-    actor_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    from_status = db.Column(db.String(32), nullable=True)
-    to_status = db.Column(db.String(32), nullable=False)
-    note = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
-
-    issue = db.relationship("Issue", back_populates="events")
-    actor = db.relationship("User")
-
-
-def new_public_id():
-    for _ in range(8):
-        candidate = "CIV-" + secrets.token_hex(3).upper()
-        if not Issue.query.filter_by(public_id=candidate).first():
-            return candidate
-    raise RuntimeError("Could not allocate a tracking ID.")
-
-
-def record_status(issue, actor, to_status, note=None, initial=False):
-    event = StatusEvent(
-        issue_id=issue.id,
-        actor_id=actor.id,
-        from_status=None if initial else issue.status,
-        to_status=to_status,
-        note=note,
-    )
-    issue.status = to_status
-    issue.updated_at = utcnow()
-    db.session.add(event)
-
-
-def ensure_staff_user():
-    email = (current_app.config.get("STAFF_EMAIL") or "").strip().lower()
-    password = current_app.config.get("STAFF_PASSWORD")
-    if not email or not password:
-        return
-    user = User.find_by_email(email)
-    if user:
-        if user.role != "staff":
-            user.role = "staff"
+@auth_bp.route("/register", methods=["GET", "POST"])
+@limiter.limit("5 per minute", methods=["POST"])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for("staff.queue" if current_user.is_staff else "public.home"))
+    if request.method == "POST":
+        email = User.normalize_email(request.form.get("email") or "")
+        password = request.form.get("password") or ""
+        confirm = request.form.get("confirm") or ""
+        if not email or not _EMAIL_RE.match(email):
+            flash("Enter a valid email address.", "error")
+        elif len(password) < 8:
+            flash("Use a password of at least 8 characters.", "error")
+        elif password != confirm:
+            flash("Passwords do not match.", "error")
+        elif request.form.get("privacy_consent") != "on":
+            flash("Confirm that you have read the Privacy Policy.", "error")
+        elif _find_user_by_email(email):
+            flash("Could not create that account. Try logging in.", "error")
+        else:
+            user = User(email=email, role="citizen", auth_provider="password")
+            user.set_password(password)
+            db.session.add(user)
             db.session.commit()
-        return
-    user = User(
-        email=email,
-        role="staff",
-        department=current_app.config.get("STAFF_DEPARTMENT") or "Other",
-    )
-    user.set_password(password)
+            return _finish_login(user)
+    return render_template("auth/register.html")
+
+
+@auth_bp.route("/login", methods=["GET", "POST"])
+@limiter.limit("5 per minute", methods=["POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("staff.queue" if current_user.is_staff else "public.home"))
+    nxt = _safe_next(request.form.get("next") or request.args.get("next"))
+    if request.method == "POST":
+        email = User.normalize_email(request.form.get("email") or "")
+        password = request.form.get("password") or ""
+        user = _find_user_by_email(email)
+        valid = user.check_password(password) if user else check_password_hash(_dummy_hash(), password) and False
+        if valid:
+            return _finish_login(user, nxt)
+        flash("Email or password is incorrect.", "error")
+    return render_template("auth/login.html", next_url=nxt or "", firebase_web_config=_firebase_web_config())
+
+
+@auth_bp.route("/auth/google", methods=["POST"])
+@limiter.limit("5 per minute", methods=["POST"])
+def google_login():
+    nxt = _safe_next(request.form.get("next") or request.args.get("next"))
+    try:
+        claims = verify_id_token(request.form.get("id_token"))
+    except TokenError:
+        flash(_GOOGLE_FAIL, "error")
+        return redirect(url_for("auth.login"))
+    uid = claims["uid"]
+    email = User.normalize_email(claims.get("email") or "")
+    existing_uid = User.query.filter_by(firebase_uid=uid).first()
+    if existing_uid:
+        if existing_uid.is_staff or existing_uid.role != "citizen":
+            flash(_GOOGLE_FAIL, "error")
+            return redirect(url_for("auth.login"))
+        return _finish_login(existing_uid, nxt)
+    if _find_user_by_email(email):
+        flash(_EMAIL_CONFLICT, "error")
+        return redirect(url_for("auth.login"))
+    user = User(email=email, role="citizen", firebase_uid=uid, auth_provider="google", password_hash=None)
     db.session.add(user)
     db.session.commit()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    return _finish_login(user, nxt)
+
+
+def _clear_session_keep_logout_flags():
+    remember = session.get("_remember")
+    session.clear()
+    if remember == "clear":
+        session["_remember"] = "clear"
+
+
+@auth_bp.route("/logout", methods=["POST"])
+@login_required
+def logout():
+    logout_user()
+    _clear_session_keep_logout_flags()
+    return redirect(url_for("auth.login"))
+
+
+@auth_bp.route("/account", methods=["GET", "POST"])
+@login_required
+def account():
+    if current_user.is_staff:
+        flash("Staff accounts cannot be deleted from this page.", "error")
+        return redirect(url_for("staff.queue"))
+    if request.method == "POST" and request.form.get("action") == "delete":
+        user = current_user._get_current_object()
+        try:
+            if user.auth_provider == "google":
+                claims = verify_id_token(request.form.get("id_token"), require_recent=True)
+                if claims["uid"] != user.firebase_uid:
+                    raise TokenError("Google sign-in failed.")
+                if user.firebase_uid:
+                    delete_firebase_user(user.firebase_uid)
+                logout_user()
+                _clear_session_keep_logout_flags()
+                delete_citizen_account(user, skip_password=True)
+            else:
+                if not user.check_password(request.form.get("password") or ""):
+                    flash("Password is incorrect.", "error")
+                    return render_template("auth/account.html", firebase_web_config=_firebase_web_config())
+                logout_user()
+                _clear_session_keep_logout_flags()
+                delete_citizen_account(user, skip_password=True)
+        except TokenError:
+            flash("Sign in again to delete your account.", "error")
+            return render_template("auth/account.html", firebase_web_config=_firebase_web_config())
+        except ReportError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("auth.login"))
+        flash("Your account and reports have been deleted.", "success")
+        return redirect(url_for("auth.login"))
+    return render_template("auth/account.html", firebase_web_config=_firebase_web_config())
