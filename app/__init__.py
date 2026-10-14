@@ -287,6 +287,8 @@ def _ensure_sqlite_user_auth_columns():
     inspector = inspect(db.engine)
     if "users" not in inspector.get_table_names():
         return
+    from sqlalchemy.exc import IntegrityError
+
     cols = {c["name"] for c in inspector.get_columns("users")}
     if "firebase_uid" not in cols:
         db.session.execute(text("ALTER TABLE users ADD COLUMN firebase_uid VARCHAR(128)"))
@@ -299,6 +301,27 @@ def _ensure_sqlite_user_auth_columns():
     )
     if "department" not in cols:
         db.session.execute(text("ALTER TABLE users ADD COLUMN department VARCHAR(32)"))
+    # One account per normalized email when the existing rows allow it.
+    # Legacy duplicates keep a non-unique index so login can fail closed
+    # without merging or deleting anyone.
+    unique_ready = True
+    try:
+        with db.session.begin_nested():
+            db.session.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email_ci_unique "
+                    "ON users (lower(trim(email)))"
+                )
+            )
+    except IntegrityError:
+        unique_ready = False
+    if not unique_ready:
+        db.session.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_users_email_ci_lookup "
+                "ON users (lower(trim(email)))"
+            )
+        )
     issue_cols = {c["name"] for c in inspector.get_columns("issues")} if "issues" in inspector.get_table_names() else set()
     if issue_cols and "possible_duplicate" not in issue_cols:
         db.session.execute(

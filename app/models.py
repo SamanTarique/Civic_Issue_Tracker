@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from flask import current_app
 from flask_login import UserMixin
+from sqlalchemy import func
 from sqlalchemy.orm import validates
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -184,11 +185,19 @@ def record_status(issue, actor, to_status, note=None, initial=False):
 
 
 def ensure_staff_user():
-    email = (current_app.config.get("STAFF_EMAIL") or "").strip().lower()
+    email = User.normalize_email(current_app.config.get("STAFF_EMAIL"))
     password = current_app.config.get("STAFF_PASSWORD")
     if not email or not password:
         return
-    user = User.query.filter_by(email=email).first()
+    matches = (
+        User.query.filter(func.lower(func.trim(User.email)) == email)
+        .order_by(User.id.asc())
+        .limit(2)
+        .all()
+    )
+    if len(matches) > 1:
+        return
+    user = matches[0] if matches else None
     if user:
         if user.role != "staff":
             user.role = "staff"
