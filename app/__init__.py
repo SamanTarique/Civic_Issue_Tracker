@@ -79,6 +79,9 @@ def create_app(test_config=None):
             raise RuntimeError(
                 "FIREBASE_AUTH_EMULATOR_HOST must not be set when APP_ENV=production."
             )
+        # The interactive debugger can read project files, including .env.
+        app.config["DEBUG"] = False
+        app.config["PROPAGATE_EXCEPTIONS"] = False
     if app.config.get("TESTING"):
         app.config["PASSWORD_HASH_METHOD"] = "pbkdf2:sha256:1"
     else:
@@ -157,6 +160,11 @@ def create_app(test_config=None):
             "category_label": category_label,
             "categories": app.config["CATEGORIES"],
         }
+
+    @app.before_request
+    def block_secret_files():
+        if _blocked_sensitive_path(request.path):
+            abort(404)
 
     @app.before_request
     def validate_csrf():
@@ -268,6 +276,28 @@ def create_app(test_config=None):
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     return app
+
+
+def _blocked_sensitive_path(path):
+    """Reject URLs that would point at env files or credential JSON."""
+    raw = (path or "").replace("\\", "/").lower()
+    parts = []
+    for part in raw.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+    for part in parts:
+        if part == ".env" or part.startswith(".env."):
+            return True
+        if "service-account" in part or "firebase-adminsdk" in part:
+            return True
+        if part.endswith(".pem") or part.endswith(".key"):
+            return True
+    return "instance" in parts
 
 
 def _trust_proxy(app):

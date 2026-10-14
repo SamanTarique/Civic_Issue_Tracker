@@ -8,22 +8,28 @@
   <h2>We store</h2>
   <ul>
     <li>Email. Password accounts also store a password hash, not the password.</li>
-    <li>Google sign-in is optional. For Google accounts we store firebase_uid, email, and created_at only. We do not store your Google name, photo, or tokens.</li>
-    <li>Category, description, status, tracking ID.</li>
-    <li>Your photo, re-saved with no EXIF/GPS in the file.</li>
-    <li>Map pin if you tick consent. Staff see the exact pin.</li>
+    <li>Google sign-in is optional. For Google accounts we store the Firebase user id, email, and when the account was created. We do not store your Google name, photo, or tokens.</li>
+    <li>Category, description, status, tracking ID, and any staff note on a status change.</li>
+    <li>Your photo, re-saved with no EXIF/GPS in the file. A short perceptual hash is kept so a near-duplicate photo can be spotted.</li>
+    <li>Map pin if you tick consent. Department staff who can open the report see the exact pin.</li>
+    <li>If you choose “I'm affected too”, we store that you support that report.</li>
   </ul>
 
   <h2>Google sign-in</h2>
-  <p>Google sign-in is optional. If you use it, we store firebase_uid, email, and created_at only. Google sees that sign-in event and your visitor IP. We never ask for a Google password. Staff accounts cannot be created or granted through Google.</p>
+  <p>Google sign-in is optional. If you use it, we store the Firebase user id, email, and when the account was created. Google sees that sign-in event and your visitor IP. We never ask for a Google password. Staff accounts cannot be created or granted through Google.</p>
+  <p>The login page, and the account page for a Google account, include the Firebase web API key, auth domain, and project id so the browser can open Google’s sign-in. That key is not a server secret; restrict it to your authorized domains in the Firebase console. The service-account file is not on any page.</p>
   <p>Firebase JavaScript files load on the login page, and on the account page only if you signed in with Google (not on Home, reports, or Privacy).</p>
 
   <h2>Who sees it</h2>
   <ul>
     <li>You: your reports.</li>
-    <li>Staff: all reports, email, exact pin.</li>
+    <li>Department staff: that department’s reports, the reporter’s email, and the exact pin. An admin can open every department.</li>
     <li>Map (optional): rounded pin, category, status. No name, no ID, no photo.</li>
   </ul>
+
+  <h2>Email</h2>
+  <p>If a department inbox is set, a new report sends that inbox the tracking ID, category, a short description, a map link, and the staff login link. It does not include the reporter’s email or the photo.</p>
+  <p>If SMTP is configured, marking a report resolved emails the resident the tracking ID, the status, and a link to the report. Console mode, or SMTP with no host, only logs that the message was not sent. The status is still saved.</p>
 
   <h2>Location</h2>
   <p>The form does not request GPS until you press “Use my location”. You can click the map instead.</p>
@@ -36,6 +42,6 @@
   <p>Registering requires you to confirm you have read this policy. We do not show whether an email is already registered. Passwords are hashed. Sessions use an HttpOnly cookie. Log out does not change reports.</p>
 
   <h2>Delete</h2>
-  <p>Account page: password accounts confirm with the password. Google accounts must sign in again (the server checks that sign-in is within five minutes). Then we delete your Firebase user, report files, and photos, and remove the local account.</p>
+  <p>Account page: password accounts confirm with the password. Google accounts must sign in again (the server checks that sign-in is within five minutes), and we delete that Firebase user. Then we remove the local account, that person’s reports, and the photo files.</p>
 </article>
 {% endblock %}

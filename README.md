@@ -173,7 +173,7 @@ Pillow only, no CLIP. Checks a downscaled grayscale copy: min edge, Laplacian-st
 
 ### Google sign-in (optional)
 
-Set `FIREBASE_PROJECT_ID`, `FIREBASE_WEB_API_KEY`, `FIREBASE_AUTH_DOMAIN`, and `GOOGLE_APPLICATION_CREDENTIALS` (JSON **outside** the repo). Add authorized domains in the Firebase console. Never set `FIREBASE_AUTH_EMULATOR_HOST` in production. Tests mock Google and do not call the network.
+Set `FIREBASE_PROJECT_ID`, `FIREBASE_WEB_API_KEY`, `FIREBASE_AUTH_DOMAIN`, and `GOOGLE_APPLICATION_CREDENTIALS` (JSON **outside** the repo). The login page shows only that web config (API key, auth domain, project id), not the service account. Restrict the web API key to authorized domains in the Firebase console. Never set `FIREBASE_AUTH_EMULATOR_HOST` in production. Tests mock Google and do not call the network.
 
 ---
 

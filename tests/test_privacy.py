@@ -93,6 +93,54 @@ def test_account_delete_removes_supporters(client, app):
         assert IssueSupporter.query.filter_by(issue_id=remaining).count() == 0
 
 
+def test_secret_files_are_not_served(client, app):
+    sentinel = "SENTINEL_ENV_FILE_CONTENTS_9f3a"
+    static_root = Path(app.root_path) / "static"
+    planted = (
+        static_root / ".env",
+        static_root / "firebase-service-account.json",
+    )
+    try:
+        for path in planted:
+            path.write_text(sentinel + "\nSECRET_KEY=super-secret\n", encoding="utf-8")
+        for url in (
+            "/.env",
+            "/instance/.env",
+            "/firebase-service-account.json",
+            "/static/.env",
+            "/static/firebase-service-account.json",
+            "/instance/civic.db",
+        ):
+            response = client.get(url)
+            assert response.status_code == 404, url
+            body = response.get_data(as_text=True)
+            assert sentinel not in body
+            assert "super-secret" not in body
+            assert "BEGIN PRIVATE" not in body
+    finally:
+        for path in planted:
+            path.unlink(missing_ok=True)
+
+
+def test_login_page_hides_server_secrets(client):
+    page = client.get("/login")
+    assert page.status_code == 200
+    text = page.get_data(as_text=True)
+    assert "test-web-key" in text
+    assert "demo-project" in text
+    assert "test-secret" not in text
+    assert "staff-pass-123" not in text
+    assert "GOOGLE_APPLICATION_CREDENTIALS" not in text
+    assert "SMTP_PASSWORD" not in text
+    assert "BEGIN PRIVATE" not in text
+    privacy = client.get("/privacy")
+    privacy_text = privacy.get_data(as_text=True)
+    assert "test-secret" not in privacy_text
+    assert "staff-pass-123" not in privacy_text
+    assert "authorized domains" in privacy_text
+    assert "Department staff" in privacy_text
+
+
 def test_csrf_rejects_post_without_token(tmp_path):
     application = create_app(app_config(tmp_path, CSRF_ENABLED=True))
     with application.app_context():

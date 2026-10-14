@@ -60,6 +60,20 @@ def test_production_trusts_one_proxy_hop(tmp_path):
     assert seen["scheme"] == "https"
 
 
+def test_production_forces_debug_off(tmp_path):
+    application = create_app(
+        app_config(
+            tmp_path,
+            APP_ENV="production",
+            TESTING=False,
+            SECRET_KEY="unique-prod-secret",
+            DEBUG=True,
+        )
+    )
+    assert application.debug is False
+    assert application.config["PROPAGATE_EXCEPTIONS"] is False
+
+
 def test_development_ignores_forwarded_client(tmp_path):
     application = create_app(app_config(tmp_path, APP_ENV="development"))
     assert not isinstance(application.wsgi_app, ProxyFix)
