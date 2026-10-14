@@ -35,7 +35,9 @@ def test_register_rejects_bad_emails_and_repeat_login(client, app):
     register(client, "Owner.Real@Example.com", password="password1")
     client.post("/logout")
     response = client.post("/login", data={"email":"  owner.real@example.com ","password":"password1"}, follow_redirects=True)
+    assert b"Something went wrong" not in response.data
     assert b"Report your issue" in response.data
+    assert b"New report" in response.data
     client.post("/logout")
     wrong = client.post("/login", data={"email":"owner.real@example.com","password":"wrong-password"}, follow_redirects=True)
     assert b"Email or password is incorrect." in wrong.data

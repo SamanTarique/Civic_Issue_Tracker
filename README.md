@@ -189,8 +189,11 @@ Civic_Issue_Tracker/
   instance/              # SQLite + uploads (gitignored)
   .env.example           # Names only; copy to .env (gitignored)
   .gitignore
-  run.py                 # Local http://127.0.0.1:5000
-  wsgi.py                # Production app object (no debug)
+  .python-version        # 3.12 — Render's default 3.14 cannot install these pins
+  render.yaml            # Render blueprint (web service, disk, health check)
+  run.py                 # Local http://127.0.0.1:5000; binds 0.0.0.0:$PORT when PORT is set
+  wsgi.py                # Production app object (no server of its own)
+  scripts/start.sh       # gunicorn on 0.0.0.0:$PORT (the Render start command)
   requirements.txt
   DEPLOY.md
   README.md

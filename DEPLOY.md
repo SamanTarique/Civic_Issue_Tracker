@@ -59,7 +59,23 @@ If Google sign-in is enabled: Firebase console → Authentication → Settings �
 
 ## Render
 
-Create a Web Service from the GitHub repo. Set the start command to a process that serves `wsgi:app` (for example gunicorn if you add it later; this repo does not vendor gunicorn). Set the same `.env` names as environment variables. Use a persistent disk if you need SQLite and uploads to survive restarts. Free instances sleep and lose local files unless you attach a disk.
+`render.yaml` is a Python **web service**. In the Dashboard: **New → Blueprint**, pick this repo, and apply it. Render prompts for `STAFF_EMAIL` and `STAFF_PASSWORD`.
+
+| Setting | Value |
+|---|---|
+| Runtime | Python |
+| Build | `pip install -r requirements.txt` |
+| Start | `sh scripts/start.sh` |
+| Health check | `/` |
+| Python | 3.12 (`.python-version`) |
+
+Required env: `SECRET_KEY` (the blueprint generates one), `APP_ENV=production`, `STAFF_EMAIL`, `STAFF_PASSWORD`. Do not set `FIREBASE_AUTH_EMULATOR_HOST`.
+
+The blueprint uses plan `0.5c-512mb` and a 1 GB disk mounted at `/opt/render/project/src/instance` (`DATABASE_URL` and `UPLOAD_FOLDER` point there). Free instances cannot attach a disk, so SQLite and photos would disappear on sleep or redeploy. New Render services default to Python 3.14, which has no wheel for pinned Pillow 10.4.0 and fails the build.
+
+`python run.py` is for a laptop. It listens on `127.0.0.1:5000` unless `PORT` is set. Render's scanner cannot see a loopback-only process, and `python wsgi.py` exits immediately because that file does not start a server. `scripts/start.sh` runs gunicorn on `0.0.0.0:$PORT` with one worker and without `--preload` (Render's default `GUNICORN_CMD_ARGS` preloads, then forks a dead SQLite connection).
+
+Tables are created when the process starts. Do not run `flask db upgrade` as a pre-deploy command: that step cannot see the persistent disk.
 
 ## Fly.io
 

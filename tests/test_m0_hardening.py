@@ -24,6 +24,31 @@ def test_open_redirect_blocked(client):
     assert "evil.example" not in location
 
 
+def test_duplicate_legacy_email_does_not_error_page(client, app):
+    with app.app_context():
+        from werkzeug.security import generate_password_hash
+
+        db.session.execute(text("DROP INDEX IF EXISTS ix_users_email_ci_unique"))
+        password_hash = generate_password_hash("password1", method=app.config["PASSWORD_HASH_METHOD"])
+        for email in ("Legacy@Example.com", " legacy@example.com "):
+            db.session.execute(
+                text(
+                    "INSERT INTO users (email, password_hash, role, auth_provider, created_at) "
+                    "VALUES (:email, :password_hash, 'citizen', 'password', CURRENT_TIMESTAMP)"
+                ),
+                {"email": email, "password_hash": password_hash},
+            )
+        db.session.commit()
+    response = client.post(
+        "/login",
+        data={"email": "legacy@example.com", "password": "password1"},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"Something went wrong" not in response.data
+    assert b"Email or password is incorrect." in response.data
+
+
 def test_login_unknown_and_wrong_password_same_message(client):
     register(client, "known@example.com")
     client.post("/logout")

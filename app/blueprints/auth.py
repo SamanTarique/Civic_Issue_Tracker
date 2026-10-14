@@ -69,7 +69,13 @@ def _find_user_by_email(email):
     normalized = User.normalize_email(email)
     if not normalized:
         return None
-    matches = User.query.filter(func.lower(func.trim(User.email)) == normalized).all()
+    # One row is a match. Two means legacy duplicates; fail closed instead of guessing.
+    matches = (
+        User.query.filter(func.lower(func.trim(User.email)) == normalized)
+        .order_by(User.id.asc())
+        .limit(2)
+        .all()
+    )
     return matches[0] if len(matches) == 1 else None
 
 

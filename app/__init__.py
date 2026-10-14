@@ -1,3 +1,4 @@
+import os
 import secrets
 from pathlib import Path
 
@@ -174,7 +175,9 @@ def create_app(test_config=None):
     def set_security_headers(response):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        # strict-origin (not no-referrer): OpenStreetMap tiles reject requests
+        # that omit the Referer header, so the map is blank on a deployed site.
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["X-DNS-Prefetch-Control"] = "off"
         from flask_login import current_user
 
@@ -257,7 +260,22 @@ def create_app(test_config=None):
 
             ensure_staff_user()
 
+    if _trust_proxy(app):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        # One hop (Render, PythonAnywhere, Fly). Without this, every visitor
+        # shares the proxy IP, so the login limit (5/minute) locks the site,
+        # and external staff links are generated as http://.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     return app
+
+
+def _trust_proxy(app):
+    render = (os.environ.get("RENDER") or "").strip().lower()
+    if render in {"1", "true", "yes", "on"}:
+        return True
+    return (app.config.get("APP_ENV") or "") == "production"
 
 
 def _ensure_sqlite_user_auth_columns():
@@ -269,6 +287,8 @@ def _ensure_sqlite_user_auth_columns():
     inspector = inspect(db.engine)
     if "users" not in inspector.get_table_names():
         return
+    from sqlalchemy.exc import IntegrityError
+
     cols = {c["name"] for c in inspector.get_columns("users")}
     if "firebase_uid" not in cols:
         db.session.execute(text("ALTER TABLE users ADD COLUMN firebase_uid VARCHAR(128)"))
@@ -281,6 +301,27 @@ def _ensure_sqlite_user_auth_columns():
     )
     if "department" not in cols:
         db.session.execute(text("ALTER TABLE users ADD COLUMN department VARCHAR(32)"))
+    # One account per normalized email when the existing rows allow it.
+    # Legacy duplicates keep a non-unique index so login can fail closed
+    # without merging or deleting anyone.
+    unique_ready = True
+    try:
+        with db.session.begin_nested():
+            db.session.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email_ci_unique "
+                    "ON users (lower(trim(email)))"
+                )
+            )
+    except IntegrityError:
+        unique_ready = False
+    if not unique_ready:
+        db.session.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_users_email_ci_lookup "
+                "ON users (lower(trim(email)))"
+            )
+        )
     issue_cols = {c["name"] for c in inspector.get_columns("issues")} if "issues" in inspector.get_table_names() else set()
     if issue_cols and "possible_duplicate" not in issue_cols:
         db.session.execute(
