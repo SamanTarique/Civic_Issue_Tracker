@@ -94,7 +94,11 @@ pytest -v
 | `flask find-orphan-uploads` | List photo files with no database row |
 | `flask backfill-thumbnails` | Write missing thumbs |
 
-Deploy: [DEPLOY.md](DEPLOY.md). Optional staff recreate: `python scripts/seed.py`.
+Optional staff recreate: `python scripts/seed.py`.
+
+### Render
+
+Python 3.12. Build `pip install -r requirements.txt`. Start `sh scripts/start.sh`. Health check `/`. Set `STAFF_EMAIL`, `STAFF_PASSWORD`, and `STAFF_DEPARTMENT`. The blueprint supplies `SECRET_KEY`. A free Render instance cannot keep the SQLite file. Other hosts and the longer steps are in [DEPLOY.md](DEPLOY.md).
 
 ---
 
@@ -106,7 +110,7 @@ Anyone can open `/`. The hero is **Report your issue**. **Nearby reports** shows
 
 ### Register / login / account
 
-- Citizen registers with email, password, and privacy consent.
+- Citizen registers with email, password, and privacy consent. The saved address is trimmed and lower case, so a later login with different spacing or capitals still matches.
 - Staff is created from `.env` (`STAFF_EMAIL`) or from `flask seed-demo`.
 - Optional **Continue with Google** on login (citizens only). Staff never get a staff role from Google.
 - Account page: log out, or delete account (password or recent Google re-auth). Deletion removes that user’s issues, photos, and `issue_supporters` rows.
@@ -184,16 +188,15 @@ Civic_Issue_Tracker/
     static/              # css, js, vendor (Leaflet, Firebase), demo/*.jpg
   migrations/            # Flask-Migrate / Alembic
   tests/                 # pytest
-  scripts/               # seed helpers, eval_photos.py
+  scripts/               # start.sh, seed helpers, eval_photos.py
   docs/screenshots/      # UI captures
   instance/              # SQLite + uploads (gitignored)
   .env.example           # Names only; copy to .env (gitignored)
   .gitignore
-  .python-version        # 3.12 — Render's default 3.14 cannot install these pins
-  render.yaml            # Render blueprint (web service, disk, health check)
+  .python-version        # 3.12
+  render.yaml            # Render blueprint
   run.py                 # Local http://127.0.0.1:5000; binds 0.0.0.0:$PORT when PORT is set
   wsgi.py                # Production app object (no server of its own)
-  scripts/start.sh       # gunicorn on 0.0.0.0:$PORT (the Render start command)
   requirements.txt
   DEPLOY.md
   README.md
@@ -226,3 +229,5 @@ Do not commit `.env` or `instance/`. Photos are login-only. The public map has n
 ```bash
 pytest -v
 ```
+
+This app was created using Cursor.
